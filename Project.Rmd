@@ -1,0 +1,544 @@
+---
+title: "Project"
+output: html_notebook
+---
+```{r}
+library(dplyr)
+library(ggfortify)
+library(ggplot2)
+library(survminer)
+library(survival)
+library(ggplot2)
+library(nnet)
+library(aod)
+library(pROC)
+library(ROCR)
+library(lmtest)
+library(KMsurv)
+library(survminer)
+#install.packages('coxphw')
+library(coxphw)
+#install.packages('survminer')
+#library('survminer')
+```
+
+```{r}
+#The dataset
+cancer = read.csv("clean_MIMICIII.csv", header = TRUE)
+head(cancer)
+```
+Calculating some descriptive statistics for demographics such as:
+-Males and females diagnosed with cancer
+-Mean and median age of cancer patients admitted to the hospital
+-Average stay for cancer patients including average stay for emergency, elective and urgent admissions
+-Overall in hospital mortality as well as mortality for patients admitted for emergency, elective and urgent admissions
+-Cancer admission rate in MIMIC-III data
+
+```{r}
+nrow(cancer)
+```
+
+#Separating males and females to calculate mean
+```{r}
+females = filter(cancer, Sex == 'F')
+females
+```
+```{r}
+#Calculating percentage of females in the dataset
+nrow(females)
+```
+```{r}
+females = (667/1394)*100
+females
+```
+Females make up 47.85% of all cancer patients.
+
+```{r}
+males = filter(cancer, Sex == 'M')
+males
+```
+```{r}
+nrow(males)
+```
+```{r}
+males = (727/1394)*100
+males
+```
+Males make up 52.15% of all cancer patients.
+
+#Average and median age
+
+```{r}
+#Mean age of all cancer patients in the dataset
+age = cancer$Age
+mean(age)
+```
+```{r}
+median(age)
+```
+
+# Average in-hospital stay in days
+
+```{r}
+hospital_stay = cancer$Stay_int
+mean(hospital_stay)
+```
+#Average hospital stay per type of admission (emergency admission, elective admission and urgent admission)
+
+#Emergency
+```{r}
+emergency = filter(cancer, Type == 'EMERGENCY')
+emergency
+```
+
+```{r}
+#Hospital stay per cancer patient whose admission is EMERGENCY
+emergency_stay = emergency$Stay_int
+mean(emergency_stay)
+```
+
+#Elective
+```{r}
+elective = filter(cancer, Type == 'ELECTIVE')
+elective
+```
+
+```{r}
+#Hospital stay per cancer patient whose admission is ELECTIVE
+elective_stay = elective$Stay_int
+mean(elective_stay)
+```
+
+#Urgent
+```{r}
+urgent = filter(cancer, Type == 'URGENT')
+urgent
+```
+
+```{r}
+#Hospital stay per cancer patient whose admission is URGENT
+urgent_stay = urgent$Stay_int
+mean(urgent_stay)
+```
+
+# In-hospital mortality
+
+```{r}
+total_mortality = cancer$Delta
+sum(total_mortality)
+```
+
+${In\:hospital\:mortality} =\frac{No\:of\:cancer\:deaths}{Total\:number\:of\:cancer\:patients}$
+
+```{r}
+(218/1394)*100
+```
+
+# In-hospital cancer mortality startified by emergency admission
+
+```{r}
+emergency_mortality = emergency$Delta
+sum(emergency_mortality)
+```
+
+```{r}
+(174/218)*100
+```
+Cancer patients admitted under emergency admission make-up 79.81% of cancer mortality
+
+# In-hospital cancer motality stratified by elective admission
+```{r}
+elective_mortality = elective$Delta
+sum(elective_mortality)
+```
+```{r}
+(36/218)*100
+```
+Cancer patients admitted under elective admission make-up 16.51% of cancer mortality.
+
+# In-hospital cancer mortality startified by urgent admission
+
+```{r}
+urgent_mortality = urgent$Delta
+sum(urgent_mortality)
+```
+```{r}
+(8/218)*100
+```
+
+Cancer patients admitted under urgent admission make-up only 3.67% of cancer mortality.
+
+# Cancer ICU Admission rate for MIMICIII data:
+
+${Cancer\:Admission\:Rate} =\frac{Total\:number\:of\:cancer\:cases}{(Total\:number\:of\:patients)\times (Total\:number\:of\:years)} = 0.0027\:person-years$
+
+${Cancer\:Admission\:Rate} =\frac{1394}{(46,520)\times (11\:years)} = 0.0027\:person-years$
+
+```{r}
+1394/(46520*11)
+```
+
+The rate of admission of cancer patients to ICU unit is 0.0027 person-years or 2.72 per 1000 person-years.
+
+#Survival Analysis
+
+```{r}
+cancer$Type.f = factor(cancer$Type)
+km_trt_fit <- survfit(Surv(Stay_int, Delta) ~ Type.f, data=cancer)
+autoplot(km_trt_fit,  xlab = 'Time in days', ylab = 'Survival Probability')
+```
+```{r}
+#using survminer.
+
+survminer::ggsurvplot(km_trt_fit, size=1,
+                       conf.int=T,
+                       censor=T,
+                       surv.median.line = "hv",
+                       risk.table = TRUE,
+                       risk.table.height=.3,
+                      fontsize=2.5)
+```
+#Filtering data for elective and emergency patients in order to do a log rank test:
+
+```{r}
+elect <- cancer[cancer$Type == "ELECTIVE",]
+elect
+```
+
+```{r}
+emerg <- cancer[cancer$Type == "EMERGENCY",]
+emerg
+```
+
+```{r}
+#Concatenating data
+combined = rbind(elect, emerg)
+combined
+```
+#log-rank test:
+
+Ho (the null-hypothesis): The two survival curves are identical (the survival estimate between emergency cancer patients and elective cancer patients is identical) (or $\ S_{1t} = S_{2t}$)
+Ha (alternative hypothesis): The two survival curves are not identical (the survival estimate between emergency cancer pateints and elective cancer patients is not identical) (or $\ S_{1t} ≠ S_{2t}$, at any time t)
+($\alpha = 0.5$)
+```{r}
+survdiff(Surv(Stay_int,Delta)~Type.f,data=combined)
+```
+From the output above, the value of chi-square statistics is 56.3 with 1 degrees of freedom and p-value is therefore 0.00000000000006 and hence we would reject the null-hypothesis in favour of the alternative hypothesis as 0.00000000000006 < 0.05 (default value of alpha). Thus, we would reject the null hypothesis that the survival estimate between emergency cancer patients and elective cancer patients is identical and therefore we could say that the survival estimates between the elective and emergency patients is not identical and hence elective cancer patients can be said to fare better than emergency cancer patients.
+
+
+
+```{r}
+cancer$Type.f = factor(cancer$Type)
+sur_fit <- survfit(Surv(Stay_int, Delta) ~ Sex, data=cancer)
+autoplot(sur_fit,  xlab = 'Time in days', ylab = 'Survival Probability')
+```
+
+```{r}
+#using survminer.
+
+survminer::ggsurvplot(sur_fit, size=1,
+                       conf.int=T,
+                       censor=T,
+                       surv.median.line = "hv",
+                       risk.table = TRUE,
+                       risk.table.height=.3,
+                      fontsize=2.5)
+```
+Ho (the null-hypothesis): The two survival curves are identical (the survival estimate between male cancer patients and female cancer patients is identical) (or $\ S_{1t} = S_{2t}$)
+Ha (alternative hypothesis): The two survival curves are not identical (the survival estimate between female cancer pateints and male cancer patients is not identical) (or $\ S_{1t} ≠ S_{2t}$, at any time t)
+($\alpha = 0.5$)
+
+```{r}
+survdiff(Surv(Stay_int,Delta)~factor(Sex),data=combined)
+```
+From the output above, the value of chi-square statistics is 3.9 with 1 degrees of freedom and p-value is therefore 0.05 and hence we would reject the null-hypothesis in favour of the alternative hypothesis. Thus, we would reject the null hypothesis that the survival estimate between femalecancer patients and male cancer patients is identical and therefore we could say that the survival estimates between the male and female patients is not identical and hence male cancer patients can be said to fare better than female cancer patients.
+
+
+
+```{r}
+hist(cancer$Stay_int)
+```
+
+# Logistic Regression to see if there is a time (in days) spent in hospital effect on predicting survival or death of cancer patients.
+
+```{r}
+mylogit <- glm(factor(Delta) ~ Stay_int + Age , data = cancer, family = "binomial")
+summary(mylogit)
+```
+
+#Interaction not significant
+```{r}
+mylogit2 <- glm(factor(Delta) ~ Stay_int + Age + Stay_int*Age, data = cancer, family = "binomial")
+summary(mylogit2)
+```
+#P-valu for the overall test using likelihood-ratio test
+The likelihood ratio test:
+Ho (null-hypothesis): beta1 = beta2 = 0
+Ha (alternative-hypothesis): beta1 ≠ beta2 ≠ 0
+
+```{r}
+wald.test(b = coef(mylogit), Sigma = vcov(mylogit), Terms = 2)
+```
+From the output, the Wald $\chi$ = 26.8 with p-value = 0.0000023. This indicates that the probability of patient mortality depends on at east one predictor at $alpha = 0.05$.
+
+Ho (null-hypothesis): reduced model is true (model with no interaction term)
+Ha (alternative hypothesis): the larger model is true (with interaction term)
+
+```{r}
+#likelihood ratio test
+lrtest(mylogit, mylogit2)
+```
+From the output, by using the Likelihood ratio test, we can see that the p-value = 0.48 > 0.05, for $\bigtriangleup G^2$=0.4988. Therefore, we accept the null-hypothesis hence, the ireduced model is significant and we should keep it in our model. We should therefore choose the non-interaction model as our best fit model.
+
+```{r}
+sum.coef<-summary(mylogit)$coef
+est<-exp(sum.coef[,1])
+print(est)
+```
+
+
+Confidence interval for the logit:
+```{r}
+confint(mylogit)
+```
+From the confidence interval, we see that non of the 95% confidence intervals capture 0 and hence we can say that the variables are significant.
+
+
+Intrepretations:
+$\widehat{beta_{Stayint}}$ = 0.019688. This indicates that an increase in days spent in ICU by a cancer patient is associated with an increase in the probability of patient mortality. To be more precise, a one-unit (day) increase in cancer patient stay at ICU is associated with an increase in the log odds of patient maortality by 0.019688 units.
+
+${e^{\beta{1}} = e^{0.019688} = 1.02$
+
+Therefore, for every 1.02 days spent in ICU, we estimate the odds of mortality to be multiplied by about 1.02 i.e there is an increase of 2% [=(1-1.02)*100%] odds for cancer patient mortality.
+
+$\widehat{beta_{Age}}$ = 1.0042681. This indicates that an incraese in a cancer patients age is associated with an increase in th eprobability of patient mortality. To be more precise, a one unit incraese in age (1 year) for a cancer patient is associated with incraese in the log odds of patient mortality by 1.0043 units.
+
+${e^{\beta{2}}} = e^{0.004259} = 1.0042681$
+
+Therefore, for every 1.004 years in age, we estimate the odds of mortality to be multiplied by about 1.004 i.e there is an increase of 0.4% [(1.004-1)*100%] of the odds of patient mortality.
+
+
+Hence we define our logit model as:
+
+$$
+\widehat{logit} = -2.256631 + 0.019688 {Days\:in\:ICU}+0.6248729{Age}
+$$
+
+The logistic regression model is:
+$$
+\hat{\pi}=\frac{e^{ -2.256631 + 0.019688{Days\:in\:ICU}+0.6248729{Age}}}{1+e^{ -2.256631 + 0.019688{Days\:in\:ICU}+0.6248729{Age}}}
+$$
+
+
+
+
+
+```{r}
+cancer$Delta.f = factor(cancer$Delta)
+```
+
+```{r}
+prob1=predict(mylogit,type=c("response"))
+pred<-prediction(prob1,cancer$Delta.f)
+perf<-performance(pred,measure ="tpr",x.measure="fpr")
+plot(perf,col=2,main="ROC CURVE ", xlab="False Positive Rate (1-Specificity)",ylab="True
+     Positive Rate(Sensitiity)")
+abline(0,1)
+```
+
+```{r}
+roc2<-roc(cancer$Delta,prob1)
+plot(roc2)
+```
+
+
+```{r}
+auc(roc2)
+```
+
+
+
+
+$$
+\hat{\pi}=\frac{e^{ 0.6090607-0.5783338*Smoker_{yes}+0.6248729 *Obesity_{yes}}}{1+e^{ 0.6090607-0.5783338*Smoker_{yes}+0.6248729 *Obesity_{yes}}}
+$$
+
+#Visualizing the data and logistic regression model:
+
+```{r}
+ggplot(cancer, aes(x=Stay_int, y=Delta)) + geom_point() +   stat_smooth(method="glm", method.args=list(family="binomial"), se=FALSE)
+```
+
+```{r}
+sum.coef<-summary(mylogit)$coef
+est<-exp(sum.coef[,1])
+print(est)
+```
+
+# Multinomial model:
+
+```{r}
+sample_n(cancer, 200)
+```
+```{r}
+cancer$Type <- factor(as.character(cancer$Type),levels=c("EMERGENCY", "URGENT", "ELECTIVE"))
+
+```
+
+
+```{r}
+
+fitprognoint <- multinom(Type ~factor(Age)  + factor(Marital) + factor(Type) + Stay_int, family = multinomial, data=cancer)
+```
+
+```{r}
+#The dataset
+sample = read.csv("sample_project", header = TRUE)
+head(sample)
+```
+
+```{r}
+sample$Type <- factor(as.character(sample$Type),levels=c("EMERGENCY", "URGENT", "ELECTIVE"))
+```
+
+```{r}
+fitprognoint <- multinom(Type ~ factor(Marital) + factor(Type) + Stay_int, family = multinomial, data=sample)
+summary(fitprognoint)
+```
+
+```{r}
+fitprognoint_1 <- multinom(factor(Type) ~  factor(Marital)  + Stay_int, family = multinomial, data=sample)
+summary(fitprognoint_1)
+```
+
+```{r}
+coef(fitprognoint_1)
+```
+
+```{r}
+ z <- summary(fitprognoint_1)$coefficients/summary(fitprognoint_1)$standard.errors
+ z
+```
+
+```{r}
+p <- (1 - pnorm(abs(z), 0, 1))*2
+p
+```
+
+```{r}
+exp(coef(fitprognoint_1))
+```
+
+```{r}
+confint(fitprognoint_1)
+```
+
+
+# Trying after changing reference level
+```{r}
+sample$Type <- relevel(sample$Type, ref = "URGENT")
+```
+
+
+```{r}
+try_1 <- multinom(factor(Type) ~  factor(Marital)  + Stay_int + Age + factor(Sex), family = multinomial, data=sample)
+summary(try_1)
+```
+
+
+```{r}
+z_1 <- summary(try_1)$coefficients/summary(try_1)$standard.errors
+z_1
+```
+
+```{r}
+p_1 <- (1 - pnorm(abs(z_1), 0, 1))*2
+p_1
+```
+
+
+```{r}
+anova(try_1,update(try_1,.~.-Sex))
+```
+
+
+#Final model
+```{r}
+try_2 <- multinom(factor(Type) ~  factor(Marital)  + Stay_int  , family = multinomial, data=sample)
+summary(try_2)
+```
+
+```{r}
+z_2 <- summary(try_2)$coefficients/summary(try_2)$standard.errors
+z_2
+```
+
+```{r}
+p_2 <- (1 - pnorm(abs(z_2), 0, 1))*2
+p_2
+```
+
+```{r}
+confint(try_2)
+```
+
+
+#Multivariate Cox regression model
+
+```{r}
+#The dataset
+surgery = read.csv("Cancer_Surgery.csv", header = TRUE)
+head(surgery)
+```
+```{r}
+nrow(surgery)
+```
+
+```{r}
+str(surgery)
+```
+
+
+```{r}
+surgery$Surgery.f = factor(surgery$Surgery)
+surgery$Type.f = factor(surgery$Type)
+```
+
+```{r}
+surgery$Surgery <- factor(surgery$Surgery, levels = c("0", "1", "2", "3", "4", "5"))
+```
+
+
+```{r}
+options(scipen = 999)
+cox <- coxph(Surv(Stay_int, Delta) ~ factor(Surgery)  , data =  surgery)
+summary(cox)
+```
+
+```{r}
+options(scipen = 999)
+cox_2 <- coxph(Surv(Stay_int, Delta) ~ Age  + factor(Surgery) + factor(Type) + Surgery.f*Type.f, data =  surgery)
+summary(cox_2)
+```
+
+
+
+
+
+
+
+```{r}
+sur_fit_3 <- survfit(Surv(Stay_int, Delta) ~ factor(Surgery), data=surgery)
+autoplot(sur_fit_3,  xlab = 'Time in days', ylab = 'Survival Probability')
+```
+```{r}
+#using survminer.
+
+survminer::ggsurvplot(sur_fit_3, size=1,
+                       conf.int=T,
+                       censor=T,
+                       surv.median.line = "hv",
+                       risk.table = TRUE,
+                       risk.table.height=.3,
+                      fontsize=2.5)
+```
